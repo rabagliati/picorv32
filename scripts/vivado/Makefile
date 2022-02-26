@@ -29,12 +29,18 @@ help:
 prog:
 	$(VIVADO) -nojournal -log $@.log -mode batch -source $@.tcl
 
+flash:
+	$(VIVADO) -nojournal -log $@.log -mode batch -source $@.tcl
+
 synth_%:
 	rm -f $@.log
 	$(VIVADO) -nojournal -log $@.log -mode batch -source $@.tcl
 	rm -rf .Xil fsm_encoding.os synth_*.backup.log usage_statistics_webtalk.*
 	-grep -B4 -A10 'Slice LUTs' $@.log
 	-grep -B1 -A9 ^Slack $@.log && echo
+
+#	srec_cat $(MCSFILE) -intel -output composite.mcs -intel
+
 
 synth_system: firmware.hex
 
