@@ -1,12 +1,19 @@
 `timescale 1 ns / 1 ps
 
 module system (
-	input            clk,
+	input            CLK100MHZ,
+        input   wire [15:0] sw,       	// Slide switches.
+        input   wire        uart_rx, 	// UART Receive pin.    HOST -> FT2232 -> A9
+        output  wire        uart_tx, 	// UART transmit pin.   HOST <- FT2232 <- D10
+
+        // output  wire        spi1_cs0n,
+        // output  wire        spi1_mosi,
+        // input   wire        spi1_miso,
         output  logic [15:0] led,
         output  reg   [2:0]  rgb0, rgb1,
         output  wire  seg7A, seg7B, seg7C, seg7D, seg7E, seg7F, seg7G, dp,
         output  wire  [7:0]  anodes,
-        // output  wire  [15:0] monitor,        // ja, jb, pods for digital logging
+        output  wire  [15:0] monitor,        // ja, jb, pods for digital logging
         input   wire  btnC, btnU, btnD, btnL, btnR,
         input   wire  nstep,			// single step active low XXX HIGH
 	input            resetn
@@ -31,6 +38,11 @@ module system (
 
         parameter LOG_CLK_DIVIDE = 20;	// bigger than all other LOG_*
         parameter LOG_DEBOUNCE = 18;        // User interface, readable on 7seg digit enables
+        parameter LOG_SPI_CLK = 2;
+
+        reg [LOG_CLK_DIVIDE:0]   divide;
+        always_ff @(posedge CLK100MHZ) begin divide <= divide + 1; end
+        wire clk = divide[2];
 
 	wire mem_valid;
 	wire mem_instr;
@@ -63,7 +75,7 @@ module system (
         wire        step_btn = (nstep ^ btnC);               // active high
 
         reg         rv_state;
-	assign mem_ready = ((rv_state == RV_RUN) | step_up) & (
+	assign mem_ready = (sw[0] | step_up) & (
                                 ram_ready ||
 			        simpleuart_reg_div_sel ||
                      (simpleuart_reg_dat_sel && !simpleuart_reg_dat_wait));
@@ -72,16 +84,15 @@ module system (
                            simpleuart_reg_div_sel ? simpleuart_reg_div_do :
                            simpleuart_reg_dat_sel ? simpleuart_reg_dat_do : 32'h 0000_0000;
 
-        reg [LOG_CLK_DIVIDE:0]   divide;
-        always_ff @(posedge clk) begin divide <= divide + 1; end
 
         always_ff @(posedge clk) begin
             if (!resetn) begin
                 rv_state <= RV_STOP;
             end else begin
+                // if (divide[2:0] == 3'b 000)
                 step[0]         <= step[1];                 // set step_up and down
 
-                if (divide[LOG_DEBOUNCE:0] == 0) begin      // slow speed
+                if (divide[LOG_DEBOUNCE:3] == 0) begin      // slow speed
                     step[3:1] <= {step_btn, step[3:2]};
                     if (step[1] & !(&longstep))        // any bits clear
                         longstep <= longstep +1;
@@ -118,7 +129,7 @@ module system (
 		.ENABLE_IRQ(1),
 		.ENABLE_IRQ_QREGS(ENABLE_IRQ_QREGS)
             ) picorv32_core (
-		.clk         (clk         ),
+		.clk         (divide[2]   ),
 		.resetn      (resetn      ),
 		.trap        (led[9]        ),
 		.mem_valid   (mem_valid   ),
@@ -139,8 +150,8 @@ module system (
 		.clk         (clk         ),
 		.resetn      (resetn      ),
 
-		.ser_tx      (ser_tx      ),
-		.ser_rx      (ser_rx      ),
+		.ser_tx      (uart_tx      ),
+		.ser_rx      (uart_rx      ),
 
 		.reg_div_we  (simpleuart_reg_div_sel ? mem_wstrb : 4'b 0000),
 		.reg_div_di  (mem_wdata),
@@ -152,6 +163,22 @@ module system (
 		.reg_dat_do  (simpleuart_reg_dat_do),
 		.reg_dat_wait(simpleuart_reg_dat_wait)
 	);
+
+        Binary_To_7Segment _b7s(
+            .i_Clk(clk),
+            .i_LeftHex(mem_addr),
+            .i_RightHex(mem_rdata),
+            .i_Mux(divide[LOG_DEBOUNCE:LOG_DEBOUNCE-2]),        // digit selectors
+            .o_Segment_A(seg7A),
+            .o_Segment_B(seg7B),
+            .o_Segment_C(seg7C),
+            .o_Segment_D(seg7D),
+            .o_Segment_E(seg7E),
+            .o_Segment_F(seg7F),
+            .o_Segment_G(seg7G),
+            .o_Segment_dp(dp),
+            .o_Digits(anodes)
+        );
 
 	reg [31:0] memory [0:MEM_SIZE-1];
 	initial $readmemh("firmware.hex", memory);
@@ -206,4 +233,38 @@ module system (
 			endcase
 		end
 	end endgenerate
+        wire spi1_clk;
+        assign spi1_clk    = divide[LOG_SPI_CLK];  // 54 Mhz max for 03 read
+        wire cfgclk, cfgmclk, eos, preq;
+
+        STARTUPE2 #(
+            .PROG_USR("FALSE"),     // Activate program event security feature. Requires encrypted bitstreams.
+            .SIM_CCLK_FREQ(0.0)     // Set the Configuration Clock Frequency(ns) for simulation.
+        ) STARTUPE2_inst (
+            .CFGCLK(cfgclk),        // 1-bit output: Configuration main clock output
+            .CFGMCLK(cfgmclk),      // 1-bit output: Configuration internal oscillator clock output
+            .EOS(eos),              // 1-bit output: Active high output signal indicating the End Of Startup.
+            .PREQ(preq),            // 1-bit output: PROGRAM request to fabric output
+            .CLK(0),                // 1-bit input: User start-up clock input
+            .GSR(0),                // 1-bit input: Global Set/Reset input (GSR cannot be used for the port name)
+            .GTS(0),                // 1-bit input: Global 3-state input (GTS cannot be used for the port name)
+            .KEYCLEARB(0),          // 1-bit input: Clear AES Decrypter Key input from Battery-Backed RAM (BBRAM)
+            .PACK(0),               // 1-bit input: PROGRAM acknowledge input
+            .USRCCLKO(spi1_clk),    // 1-bit input: User CCLK input
+            .USRCCLKTS(0),          // 1-bit input: User CCLK 3-state enable input
+            .USRDONEO(1),           // 1-bit input: User DONE pin output control
+            .USRDONETS(0)           // 1-bit input: User DONE 3-state enable output
+        );
+// End of STARTUPE2_inst instantiation
+
+        assign monitor[0] = clk;
+        assign monitor[1] = mem_instr;
+        assign monitor[2] = mem_ready;
+        assign monitor[3] = mem_wstrb;
+	assign monitor[4] = mem_la_read;
+	assign monitor[5] = step_up;
+        assign monitor[6] = nstep;
+        assign monitor[7] = step_btn;
+        assign monitor[11:8] = step; // mem_addr[3:0];
+        assign monitor[15:12] = mem_rdata[3:0];
 endmodule

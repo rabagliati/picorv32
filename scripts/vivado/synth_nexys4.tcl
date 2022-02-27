@@ -2,6 +2,7 @@
 read_verilog system.sv
 read_verilog ../../picorv32.v
 read_verilog ../../picosoc/simpleuart.v
+read_verilog /home/andyr/git/vivado/src/verilog/Binary_To_7Segment.sv
 read_xdc synth_nexys4.xdc
 
 synth_design -part xc7a100t -top system
