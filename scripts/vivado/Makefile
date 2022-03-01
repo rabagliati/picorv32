@@ -50,10 +50,12 @@ sim_system:
 	$(XELAB) -L unifast_ver -L unisims_ver -R system_tb glbl
 
 firmware.hex: firmware.S firmware.c firmware.lds
-	$(TOOLCHAIN_PREFIX)gcc -Os -ffreestanding -nostdlib -o firmware.elf firmware.S firmware.c \
+	$(TOOLCHAIN_PREFIX)gcc -march=rv32i -mabi=ilp32 -Os -ffreestanding -nostdlib -o firmware.elf -g firmware.S firmware.c \
 		 --std=gnu99 -Wl,-Bstatic,-T,firmware.lds,-Map,firmware.map,--strip-debug -lgcc
+	$(TOOLCHAIN_PREFIX)gcc -S -fverbose-asm -g -march=rv32i -mabi=ilp32 -ffreestanding -nostdlib firmware.S firmware.c --std=gnu99
 	$(TOOLCHAIN_PREFIX)objcopy -O binary firmware.elf firmware.bin
 	python3 ../../firmware/makehex.py firmware.bin 4096 > firmware.hex
+	$(TOOLCHAIN_PREFIX)objdump -S --disassemble firmware.elf > firmware.lst
 
 tab_%/results.txt:
 	bash tabtest.sh $@

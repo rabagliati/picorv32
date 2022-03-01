@@ -116,6 +116,7 @@ module system (
             end
         end
 
+        wire trap;
 	picorv32 #(
 		.STACKADDR(STACKADDR),
 		.PROGADDR_RESET(PROGADDR_RESET),
@@ -128,10 +129,10 @@ module system (
 		.ENABLE_FAST_MUL(ENABLE_FAST_MUL),
 		.ENABLE_IRQ(1),
 		.ENABLE_IRQ_QREGS(ENABLE_IRQ_QREGS)
-            ) picorv32_core (
+            ) _cpu (
 		.clk         (divide[2]   ),
 		.resetn      (resetn      ),
-		.trap        (led[9]        ),
+		.trap        (trap        ),
 		.mem_valid   (mem_valid   ),
 		.mem_instr   (mem_instr   ),
 		.mem_ready   (mem_ready   ),
@@ -143,10 +144,11 @@ module system (
 		.mem_la_write(mem_la_write),
 		.mem_la_addr (mem_la_addr ),
 		.mem_la_wdata(mem_la_wdata),
+                .dbg_cpu_state(led[7:0]),
 		.mem_la_wstrb(mem_la_wstrb)
 	);
 
-	simpleuart simpleuart (
+	simpleuart _simpleuart (
 		.clk         (clk         ),
 		.resetn      (resetn      ),
 
@@ -166,8 +168,8 @@ module system (
 
         Binary_To_7Segment _b7s(
             .i_Clk(clk),
-            .i_LeftHex(mem_addr),
-            .i_RightHex(mem_rdata),
+            .i_LeftHex((sw[1] | btnU) ? mem_rdata[31:16] : (sw[2] | btnD) ? mem_wdata[31:16] : mem_addr[31:16]),
+            .i_RightHex((sw[1] | btnU) ? mem_rdata[15:0] : btnD ? mem_wdata[15:0]  : mem_addr[15:0]),
             .i_Mux(divide[LOG_DEBOUNCE:LOG_DEBOUNCE-2]),        // digit selectors
             .o_Segment_A(seg7A),
             .o_Segment_B(seg7B),
@@ -189,7 +191,7 @@ module system (
 	generate if (FAST_MEMORY) begin
 		always @(posedge clk) begin
 			ram_ready <= 1;
-			led[8] <= 1;    // out_byte_en <= 0;
+			// led[8] <= 1;    // out_byte_en <= 0;
 			ram_rdata <= memory[mem_la_addr >> 2];
 			if (mem_la_write && (mem_la_addr >> 2) < MEM_SIZE) begin
 				if (mem_la_wstrb[0]) memory[mem_la_addr >> 2][ 7: 0] <= mem_la_wdata[ 7: 0];
@@ -199,8 +201,8 @@ module system (
 			end
 			else
 			if (mem_la_write && mem_la_addr == 32'h1000_0000) begin
-				led[8] <= 1;    // out_byte_en <= 1;
-				led[7:0] <= mem_la_wdata;    // out_byte <= mem_la_wdata;
+				// led[8] <= 1;    // out_byte_en <= 1;
+				led[15:8] <= mem_la_wdata;    // out_byte <= mem_la_wdata;
 			end
 		end
 	end else begin
@@ -211,7 +213,7 @@ module system (
 			m_read_data <= memory[mem_addr >> 2];
 			ram_rdata <= m_read_data;
 
-			led[8] <= 0;    // out_byte_en <= 0;
+			// led[8] <= 0;    // out_byte_en <= 0;
 
 			(* parallel_case *)
 			case (1)
@@ -226,8 +228,8 @@ module system (
 					ram_ready <= 1;
 				end
 				mem_valid && !ram_ready && |mem_wstrb && mem_addr == 32'h1000_0000: begin
-					led[8] <= 1;            // out_byte_en <= 1;
-					led[7:0] <= mem_wdata; // out_byte
+					// led[8] <= 1;            // out_byte_en <= 1;
+					led[15:8] <= mem_wdata; // out_byte
 					ram_ready <= 1;
 				end
 			endcase
@@ -263,8 +265,8 @@ module system (
         assign monitor[3] = mem_wstrb;
 	assign monitor[4] = mem_la_read;
 	assign monitor[5] = step_up;
-        assign monitor[6] = nstep;
+        assign monitor[6] = ram_ready;
         assign monitor[7] = step_btn;
-        assign monitor[11:8] = step; // mem_addr[3:0];
-        assign monitor[15:12] = mem_rdata[3:0];
+        assign monitor[15:8] = mem_la_addr[7:0];
+        // assign monitor[15:12] = mem_rdata[3:0];
 endmodule
