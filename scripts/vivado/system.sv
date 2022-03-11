@@ -169,7 +169,7 @@ module system (
         Binary_To_7Segment _b7s(
             .i_Clk(clk),
             .i_LeftHex((sw[1] | btnU) ? mem_rdata[31:16] : (sw[2] | btnD) ? mem_wdata[31:16] : mem_addr[31:16]),
-            .i_RightHex((sw[1] | btnU) ? mem_rdata[15:0] : btnD ? mem_wdata[15:0]  : mem_addr[15:0]),
+            .i_RightHex((sw[1] | btnU) ? mem_rdata[15:0] : (sw[2] | btnD) ? mem_wdata[15:0]  : mem_addr[15:0]),
             .i_Mux(divide[LOG_DEBOUNCE:LOG_DEBOUNCE-2]),        // digit selectors
             .o_Segment_A(seg7A),
             .o_Segment_B(seg7B),
@@ -263,10 +263,10 @@ module system (
         assign monitor[1] = mem_instr;
         assign monitor[2] = mem_ready;
         assign monitor[3] = mem_wstrb;
-	assign monitor[4] = mem_la_read;
-	assign monitor[5] = step_up;
-        assign monitor[6] = ram_ready;
-        assign monitor[7] = step_btn;
+	assign monitor[4] = simpleuart_reg_dat_sel;
+	assign monitor[5] = simpleuart_reg_div_sel;
+        assign monitor[6] = uart_rx;
+        assign monitor[7] = uart_tx;
         assign monitor[15:8] = mem_la_addr[7:0];
         // assign monitor[15:12] = mem_rdata[3:0];
 endmodule

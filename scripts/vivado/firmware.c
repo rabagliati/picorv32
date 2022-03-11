@@ -1,12 +1,5 @@
-void putc(char c)
-{
-	*(volatile char*)0x10000000 = c;
-}
-
-void puts(const char *s)
-{
-	while (*s) putc(*s++);
-}
+#define reg_uart_clkdiv (*(volatile int*)0x02000004)
+#define reg_uart_data (*(volatile int*)0x02000008)
 
 void *memcpy(void *dest, const void *src, int n)
 {
@@ -17,10 +10,22 @@ void *memcpy(void *dest, const void *src, int n)
 	return dest;
 }
 
+void putc(char c)
+{
+	reg_uart_data = c;
+}
+
+void puts(const char *s)
+{
+	while (*s) putc(*s++);
+}
+
 void main()
 {
-	char message[] = "$Uryyb+Jbeyq!+Vs+lbh+pna+ernq+guvf+zrffntr+gura$gur+CvpbEI32+PCH"
-			"+frrzf+gb+or+jbexvat+whfg+svar.$$++++++++++++++++GRFG+CNFFRQ!$$";
+	// char message[] = "$Uryyb+Jbeyq!+Vs+lbh+pna+ernq+guvf+zrffntr+gura$gur+CvpbEI32+PCH"
+       //  		"+frrzf+gb+or+jbexvat+whfg+svar.$$++++++++++++++++GRFG+CNFFRQ!$$";
+        char message[] = "$NOPQ$";
+	reg_uart_clkdiv = 104;
 	for (int i = 0; message[i]; i++)
 		switch (message[i])
 		{
