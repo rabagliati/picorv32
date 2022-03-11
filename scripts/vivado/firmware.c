@@ -22,9 +22,8 @@ void puts(const char *s)
 
 void main()
 {
-	// char message[] = "$Uryyb+Jbeyq!+Vs+lbh+pna+ernq+guvf+zrffntr+gura$gur+CvpbEI32+PCH"
-       //  		"+frrzf+gb+or+jbexvat+whfg+svar.$$++++++++++++++++GRFG+CNFFRQ!$$";
-        char message[] = "$NOPQ$";
+	char message[] = "$Uryyb+Jbeyq!+Vs+lbh+pna+ernq+guvf+zrffntr+gura$gur+CvpbEI32+PCH"
+         		"+frrzf+gb+or+jbexvat+whfg+svar.$$++++++++++++++++GRFG+CNFFRQ!$$";
 	reg_uart_clkdiv = 104;
 	for (int i = 0; message[i]; i++)
 		switch (message[i])

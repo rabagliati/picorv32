@@ -69,14 +69,34 @@ module system (
 
 
         enum { RV_STOP, RV_RUN } j1_st;
-        reg [5:0]   longstep;           // ref DEBOUNCE, size of reg is what counts
+        reg [7:0]   longstep;           // ref DEBOUNCE, size of reg is what counts
         reg [3:0]   step;                               // single step
+        reg [4:0]   buttons[1:0];   // C, L, R, U, D
+        wire [4:0]  button_up = ~buttons[0] & buttons[1];
+
         wire        step_up = step[1] & !step[0];
-        wire        step_btn = (nstep ^ btnC);               // active high
+        wire        step_btn = (nstep ^ button_up[0]);  // active high, C
 
         reg         rv_state;
-	assign mem_ready = (sw[0] | step_up) & (
-                                ram_ready ||
+        reg         run;
+        wire        breaking = (sw == mem_addr[15:0]) & mem_instr;
+
+        always_ff @(posedge clk) begin
+            if (!resetn | button_up[0] | breaking)
+                run <= 0;
+            else if (button_up[2])   // C, L, *R, U, D
+                run <= 1;
+        end
+        reg         display_data;
+        always_ff @(posedge clk) begin
+            if (!resetn)
+                display_data <= 0;
+            else if (button_up[3])   // C, L, R, *U, D
+                display_data <= !display_data;
+        end
+
+	assign mem_ready = ((!breaking & run) | step_up | button_up[2] | button_up[0]) & (   // *C, L, *R or longstep, U, D
+                                (!mem_addr[14] & ram_ready) ||
 			        simpleuart_reg_div_sel ||
                      (simpleuart_reg_dat_sel && !simpleuart_reg_dat_wait));
 
@@ -89,15 +109,18 @@ module system (
             if (!resetn) begin
                 rv_state <= RV_STOP;
             end else begin
+
                 // if (divide[2:0] == 3'b 000)
                 step[0]         <= step[1];                 // set step_up and down
+                buttons[1]      <= buttons[0];   // C, L, R, U, D
 
                 if (divide[LOG_DEBOUNCE:3] == 0) begin      // slow speed
                     step[3:1] <= {step_btn, step[3:2]};
                     if (step[1] & !(&longstep))        // any bits clear
                         longstep <= longstep +1;
                     else if (!step[1])                  // button not pressed
-                        longstep <= 0;                  // otherwise stick at 11111
+                        longstep <= 0;                  // otherwise stick at 111111
+                    buttons[0] <= { btnC, btnL, btnR | (longstep == 7'b1111111), btnU, btnD};
                 end
 
                 if (divide[LOG_DEBOUNCE:LOG_DEBOUNCE-2] == 3'b000) begin    // 1/8 duty cycle
@@ -168,8 +191,8 @@ module system (
 
         Binary_To_7Segment _b7s(
             .i_Clk(clk),
-            .i_LeftHex((sw[1] | btnU) ? mem_rdata[31:16] : (sw[2] | btnD) ? mem_wdata[31:16] : mem_addr[31:16]),
-            .i_RightHex((sw[1] | btnU) ? mem_rdata[15:0] : (sw[2] | btnD) ? mem_wdata[15:0]  : mem_addr[15:0]),
+            .i_LeftHex(display_data ? mem_rdata[31:16] : mem_addr[31:16]),
+            .i_RightHex(display_data ? mem_rdata[15:0] : mem_addr[15:0]),
             .i_Mux(divide[LOG_DEBOUNCE:LOG_DEBOUNCE-2]),        // digit selectors
             .o_Segment_A(seg7A),
             .o_Segment_B(seg7B),
@@ -190,7 +213,7 @@ module system (
 
 	generate if (FAST_MEMORY) begin
 		always @(posedge clk) begin
-			ram_ready <= 1;
+                        ram_ready <= 1; // (mem_la_addr >> 2) < MEM_SIZE ? 0 : 1;
 			// led[8] <= 1;    // out_byte_en <= 0;
 			ram_rdata <= memory[mem_la_addr >> 2];
 			if (mem_la_write && (mem_la_addr >> 2) < MEM_SIZE) begin
@@ -264,7 +287,7 @@ module system (
         assign monitor[2] = mem_ready;
         assign monitor[3] = mem_wstrb;
 	assign monitor[4] = simpleuart_reg_dat_sel;
-	assign monitor[5] = simpleuart_reg_div_sel;
+	assign monitor[5] = simpleuart_reg_dat_wait;
         assign monitor[6] = uart_rx;
         assign monitor[7] = uart_tx;
         assign monitor[15:8] = mem_la_addr[7:0];

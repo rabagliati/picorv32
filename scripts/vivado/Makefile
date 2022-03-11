@@ -42,7 +42,7 @@ synth_%:
 #	srec_cat $(MCSFILE) -intel -output composite.mcs -intel
 
 
-synth_system: firmware.hex
+synth_nexys4: firmware.hex
 
 sim_system:
 	$(XVLOG) system_tb.v synth_system.v
