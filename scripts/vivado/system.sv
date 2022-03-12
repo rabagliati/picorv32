@@ -42,72 +42,91 @@ module system (
 
         reg [LOG_CLK_DIVIDE:0]   divide;
         always_ff @(posedge CLK100MHZ) begin divide <= divide + 1; end
-        wire clk = divide[2];
+        wire            clk = divide[1];
 
-	wire mem_valid;
-	wire mem_instr;
-        reg ram_ready;
-	wire [31:0] mem_addr;
-	wire [31:0] mem_wdata;
-	wire [3:0] mem_wstrb;
-	reg [31:0] ram_rdata;
-	wire  [31:0] mem_rdata = ram_rdata;
+        assign          led[15:0] = sw[15:0];
+	wire            mem_valid;
+	wire            mem_instr;
+        reg             ram_ready;
+	wire [31:0]     mem_addr;
+	wire [31:0]     mem_wdata;
+	wire [3:0]      mem_wstrb;
+	reg [31:0]      ram_rdata;
+	logic [31:0]    mem_rdata;
+        logic           mem_ready;
 
-	wire mem_la_read;
-	wire mem_la_write;
-	wire [31:0] mem_la_addr;
-	wire [31:0] mem_la_wdata;
-	wire [3:0] mem_la_wstrb;
+	wire            mem_la_read;
+	wire            mem_la_write;
+	wire [31:0]     mem_la_addr;
+	wire [31:0]     mem_la_wdata;
+	wire [3:0]      mem_la_wstrb;
 
-	wire        simpleuart_reg_div_sel = mem_valid && (mem_addr == 32'h 0200_0004);
-	wire [31:0] simpleuart_reg_div_do;
+	wire            simpleuart_reg_div_sel = mem_valid && (mem_addr == 32'h 0200_0004);
+	wire [31:0]     simpleuart_reg_div_do;
 
-	wire        simpleuart_reg_dat_sel = mem_valid && (mem_addr == 32'h 0200_0008);
-	wire [31:0] simpleuart_reg_dat_do;
+	wire            simpleuart_reg_dat_sel = mem_valid && (mem_addr == 32'h 0200_0008);
+	wire [31:0]     simpleuart_reg_dat_do;
 
-        wire   simpleuart_reg_dat_wait;
+        wire            simpleuart_reg_dat_wait;
 
 
         enum { RV_STOP, RV_RUN } j1_st;
         reg [7:0]   longstep;           // ref DEBOUNCE, size of reg is what counts
+                                        // (longstep == 7'b1111111) - resting at top
+                                        // (longstep == 7'b1111110) - blip to signal
         reg [3:0]   step;                               // single step
         reg [4:0]   buttons[1:0];   // C, L, R, U, D
         wire [4:0]  button_up = ~buttons[0] & buttons[1];
 
-        wire        step_up = step[1] & !step[0];
-        wire        step_btn = (nstep ^ button_up[0]);  // active high, C
+        wire        step_up = (longstep != 7'b1111111) & step[1] & !step[0];
 
         reg         rv_state;
-        reg         run;
         wire        breaking = (sw == mem_addr[15:0]) & mem_instr;
 
         always_ff @(posedge clk) begin
-            if (!resetn | button_up[0] | breaking)
-                run <= 0;
-            else if (button_up[2])   // C, L, *R, U, D
-                run <= 1;
+            if (!resetn | button_up[0])             // *C, L, R, U, D
+                rv_state <= RV_STOP;
+            else if (button_up[2])                  // C, L, *R, U, D
+                rv_state <= RV_RUN;
+            else if (longstep == 7'b1111110)
+                rv_state <= RV_RUN;
+            else if (breaking)
+                rv_state <= RV_STOP;
         end
         reg         display_data;
         always_ff @(posedge clk) begin
             if (!resetn)
                 display_data <= 0;
-            else if (button_up[3])   // C, L, R, *U, D
+            else if (button_up[3])                  // C, L, R, *U, D
                 display_data <= !display_data;
         end
 
-	assign mem_ready = ((!breaking & run) | step_up | button_up[2] | button_up[0]) & (   // *C, L, *R or longstep, U, D
-                                (!mem_addr[14] & ram_ready) ||
-			        simpleuart_reg_div_sel ||
-                     (simpleuart_reg_dat_sel && !simpleuart_reg_dat_wait));
-
-	assign mem_rdata = ram_ready ? ram_rdata :
-                           simpleuart_reg_div_sel ? simpleuart_reg_div_do :
-                           simpleuart_reg_dat_sel ? simpleuart_reg_dat_do : 32'h 0000_0000;
-
+        always_comb begin
+             case (1)
+                 simpleuart_reg_div_sel: begin
+                     mem_rdata = simpleuart_reg_div_do;
+                     mem_ready = 1;
+                 end
+                 simpleuart_reg_dat_sel: begin
+                     mem_rdata = simpleuart_reg_dat_do;
+                     mem_ready = !simpleuart_reg_dat_wait;
+                 end
+                 !mem_addr[14]: begin
+                     mem_rdata = ram_rdata;
+                     mem_ready = ((rv_state == RV_RUN) | step_up | button_up[0]) & ram_ready;  // *C, L, *R or longstep, U, D
+                 end
+                 default: begin
+                     mem_rdata = 32'h 0000_0000;
+                     mem_ready = 0;
+                 end
+            endcase
+        end
 
         always_ff @(posedge clk) begin
             if (!resetn) begin
-                rv_state <= RV_STOP;
+                rgb0[0] <= 0;
+                rgb0[1] <= 0;
+                rgb0[2] <= 0;
             end else begin
 
                 // if (divide[2:0] == 3'b 000)
@@ -115,12 +134,12 @@ module system (
                 buttons[1]      <= buttons[0];   // C, L, R, U, D
 
                 if (divide[LOG_DEBOUNCE:3] == 0) begin      // slow speed
-                    step[3:1] <= {step_btn, step[3:2]};
+                    step[3:1] <= {nstep, step[3:2]};
                     if (step[1] & !(&longstep))        // any bits clear
                         longstep <= longstep +1;
                     else if (!step[1])                  // button not pressed
                         longstep <= 0;                  // otherwise stick at 111111
-                    buttons[0] <= { btnC, btnL, btnR | (longstep == 7'b1111111), btnU, btnD};
+                    buttons[0] <= { btnD, btnU, btnR, btnL, btnC};
                 end
 
                 if (divide[LOG_DEBOUNCE:LOG_DEBOUNCE-2] == 3'b000) begin    // 1/8 duty cycle
@@ -128,9 +147,9 @@ module system (
                     rgb0[0] <= (rv_state == RV_STOP);
                     rgb0[1] <= (rv_state == RV_RUN);
 
-	            rgb1[0] <=  mem_instr;
+	            rgb1[0] <= mem_instr;
                     rgb1[1] <= mem_ready;
-	            rgb1[2] <=  mem_valid;
+	            rgb1[2] <= breaking;
 
                 end else begin
                     rgb0 <= 3'b000;       // PWM
@@ -167,7 +186,6 @@ module system (
 		.mem_la_write(mem_la_write),
 		.mem_la_addr (mem_la_addr ),
 		.mem_la_wdata(mem_la_wdata),
-                .dbg_cpu_state(led[7:0]),
 		.mem_la_wstrb(mem_la_wstrb)
 	);
 
@@ -213,19 +231,13 @@ module system (
 
 	generate if (FAST_MEMORY) begin
 		always @(posedge clk) begin
-                        ram_ready <= 1; // (mem_la_addr >> 2) < MEM_SIZE ? 0 : 1;
-			// led[8] <= 1;    // out_byte_en <= 0;
+                        ram_ready <= 1;
 			ram_rdata <= memory[mem_la_addr >> 2];
 			if (mem_la_write && (mem_la_addr >> 2) < MEM_SIZE) begin
 				if (mem_la_wstrb[0]) memory[mem_la_addr >> 2][ 7: 0] <= mem_la_wdata[ 7: 0];
 				if (mem_la_wstrb[1]) memory[mem_la_addr >> 2][15: 8] <= mem_la_wdata[15: 8];
 				if (mem_la_wstrb[2]) memory[mem_la_addr >> 2][23:16] <= mem_la_wdata[23:16];
 				if (mem_la_wstrb[3]) memory[mem_la_addr >> 2][31:24] <= mem_la_wdata[31:24];
-			end
-			else
-			if (mem_la_write && mem_la_addr == 32'h1000_0000) begin
-				// led[8] <= 1;    // out_byte_en <= 1;
-				led[15:8] <= mem_la_wdata;    // out_byte <= mem_la_wdata;
 			end
 		end
 	end else begin
@@ -235,8 +247,6 @@ module system (
 
 			m_read_data <= memory[mem_addr >> 2];
 			ram_rdata <= m_read_data;
-
-			// led[8] <= 0;    // out_byte_en <= 0;
 
 			(* parallel_case *)
 			case (1)
@@ -248,11 +258,6 @@ module system (
 					if (mem_wstrb[1]) memory[mem_addr >> 2][15: 8] <= mem_wdata[15: 8];
 					if (mem_wstrb[2]) memory[mem_addr >> 2][23:16] <= mem_wdata[23:16];
 					if (mem_wstrb[3]) memory[mem_addr >> 2][31:24] <= mem_wdata[31:24];
-					ram_ready <= 1;
-				end
-				mem_valid && !ram_ready && |mem_wstrb && mem_addr == 32'h1000_0000: begin
-					// led[8] <= 1;            // out_byte_en <= 1;
-					led[15:8] <= mem_wdata; // out_byte
 					ram_ready <= 1;
 				end
 			endcase

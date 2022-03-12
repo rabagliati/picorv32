@@ -154,7 +154,6 @@ module picorv32 #(
 	output reg [63:0] rvfi_csr_minstret_wdata,
 `endif
 
-        output wire [7:0] dbg_cpu_state,
 	// Trace Interface
 	output reg        trace_valid,
 	output reg [35:0] trace_data
@@ -1175,7 +1174,6 @@ module picorv32 #(
 	localparam cpu_state_ldmem  = 8'b00000001;
 
 	reg [7:0] cpu_state;
-
 	reg [1:0] irq_state;
 
 	`FORMAL_KEEP reg [127:0] dbg_ascii_state;
@@ -2161,15 +2159,6 @@ module picorv32 #(
 		end
 	end
 `endif
-        assign dbg_cpu_state[0] = instr_lui;
-        assign dbg_cpu_state[1] = instr_jal | instr_jalr;
-        assign dbg_cpu_state[2] = instr_beq| instr_bne| instr_blt| instr_bge| instr_bltu| instr_bgeu;
-        assign dbg_cpu_state[3] = instr_lb| instr_lh| instr_lw| instr_lbu| instr_lhu| instr_sb| instr_sh| instr_sw;
-        assign dbg_cpu_state[4] = instr_trap;
-        assign dbg_cpu_state[5] = instr_addi| instr_slti| instr_sltiu| instr_xori| instr_ori| instr_andi| instr_slli| instr_srli| instr_srai;
-        assign dbg_cpu_state[6] = cpu_state[6];
-        assign dbg_cpu_state[7] = cpu_state[7];
-
 endmodule
 
 // This is a simple example implementation of PICORV32_REGS.
@@ -3052,5 +3041,4 @@ module picorv32_wb #(
 			endcase
 		end
 	end
-
 endmodule

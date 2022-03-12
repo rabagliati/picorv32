@@ -17,7 +17,7 @@
  *
  */
 
-module simpleuart #(parameter integer DEFAULT_DIV = 1) (
+module simpleuart #(parameter integer DEFAULT_DIV = 434) (
 	input clk,
 	input resetn,
 
@@ -49,8 +49,7 @@ module simpleuart #(parameter integer DEFAULT_DIV = 1) (
 
 	assign reg_div_do = cfg_divider;
 
-	assign reg_dat_wait = (reg_dat_we && (send_bitcnt || send_dummy)) |
-                              (reg_dat_re && recv_buf_valid);
+	assign reg_dat_wait = (reg_dat_we && (|send_bitcnt || send_dummy)); //  | (reg_dat_re && recv_buf_valid);
 	assign reg_dat_do = recv_buf_valid ? recv_buf_data : ~0;
 
 	always @(posedge clk) begin
