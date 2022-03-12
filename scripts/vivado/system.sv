@@ -101,6 +101,14 @@ module system (
                 display_data <= !display_data;
         end
 
+//         assign mem_ready = simpleuart_reg_div_sel ? 1 :
+//                            simpleuart_reg_dat_sel ? !simpleuart_reg_dat_wait :
+//                                     !mem_addr[14] ? ram_ready && ((rv_state == RV_RUN) | step_up | button_up[0]) : 0;
+// 
+//         assign mem_rdata = simpleuart_reg_div_sel ? simpleuart_reg_div_do :
+//                            simpleuart_reg_dat_sel ? simpleuart_reg_dat_do :
+//                                         ram_ready ? ram_rdata : 32'h 0000_0000;
+
         always_comb begin
              case (1)
                  simpleuart_reg_div_sel: begin
