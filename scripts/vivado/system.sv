@@ -42,7 +42,8 @@ module system (
 
         reg [LOG_CLK_DIVIDE:0]   divide;
         always_ff @(posedge CLK100MHZ) begin divide <= divide + 1; end
-        wire            clk = divide[1];
+        // wire            clk = CLK100MHZ;
+        wire            clk = divide[0];
 
         assign          led[15:0] = sw[15:0];
 	wire            mem_valid;
@@ -67,7 +68,19 @@ module system (
 	wire            simpleuart_reg_dat_sel = mem_valid && (mem_addr == 32'h 0200_0008);
 	wire [31:0]     simpleuart_reg_dat_do;
 
-        wire            simpleuart_reg_dat_wait;
+
+        wire            uart_busy;
+        reg             simpleuart_write_wait;
+        always_ff @(posedge clk) begin
+            if (!resetn)
+                simpleuart_write_wait <= 0;
+            else if (!uart_busy)
+                simpleuart_write_wait <= 0;
+            else if (!simpleuart_reg_dat_sel)
+                simpleuart_write_wait <= uart_busy;
+        end
+
+        wire            simpleuart_read_wait;
 
 
         enum { RV_STOP, RV_RUN } j1_st;
@@ -117,7 +130,7 @@ module system (
                  end
                  simpleuart_reg_dat_sel: begin
                      mem_rdata = simpleuart_reg_dat_do;
-                     mem_ready = !simpleuart_reg_dat_wait;
+                     mem_ready = !simpleuart_write_wait;
                  end
                  !mem_addr[14]: begin
                      mem_rdata = ram_rdata;
@@ -155,7 +168,7 @@ module system (
                     rgb0[0] <= (rv_state == RV_STOP);
                     rgb0[1] <= (rv_state == RV_RUN);
 
-	            rgb1[0] <= mem_instr;
+	            rgb1[0] <= simpleuart_write_wait;
                     rgb1[1] <= mem_ready;
 	            rgb1[2] <= breaking;
 
@@ -197,24 +210,44 @@ module system (
 		.mem_la_wstrb(mem_la_wstrb)
 	);
 
-	simpleuart _simpleuart (
-		.clk         (clk         ),
-		.resetn      (resetn      ),
+        wire dbg_send;
 
-		.ser_tx      (uart_tx      ),
-		.ser_rx      (uart_rx      ),
+        buart #(
+            .CLKFREQ(100 * 1000000)
+        ) _uart0 (
+            .clk    (clk),
+            .baud   (115200),
+            .rx     (uart_rx),          // input pin
+            .valid  (simpleuart_read_wait),    // output
+            .rd     (simpleuart_reg_dat_sel && !mem_wstrb),
+            .rx_data(simpleuart_reg_dat_do),
 
-		.reg_div_we  (simpleuart_reg_div_sel ? mem_wstrb : 4'b 0000),
-		.reg_div_di  (mem_wdata),
-		.reg_div_do  (simpleuart_reg_div_do),
+            .tx     (uart_tx),          // output pin
+            .wr     (simpleuart_reg_dat_sel ? mem_wstrb[0] : 1'b 0),           // input
+            .busy   (uart_busy),     // output
+            .tx_data(mem_wdata),
+            .resetq (resetn)
+        );
 
-		.reg_dat_we  (simpleuart_reg_dat_sel ? mem_wstrb[0] : 1'b 0),
-		.reg_dat_re  (simpleuart_reg_dat_sel && !mem_wstrb),
-		.reg_dat_di  (mem_wdata),
-		.reg_dat_do  (simpleuart_reg_dat_do),
-		.reg_dat_wait(simpleuart_reg_dat_wait)
-	);
-
+// 	simpleuart _simpleuart (
+// 		.clk         (clk         ),
+//                 .dbg_send(dbg_send),
+// 		.resetn      (resetn      ),
+// 
+// 		.ser_tx      (uart_tx      ),
+// 		.ser_rx      (uart_rx      ),
+// 
+// 		.reg_div_we  (simpleuart_reg_div_sel ? mem_wstrb : 4'b 0000),
+// 		.reg_div_di  (mem_wdata),
+// 		.reg_div_do  (simpleuart_reg_div_do),
+// 
+// 		.reg_dat_we  (simpleuart_reg_dat_sel ? mem_wstrb[0] : 1'b 0),
+// 		.reg_dat_re  (simpleuart_reg_dat_sel && !mem_wstrb),
+// 		.reg_dat_di  (mem_wdata),
+// 		.reg_dat_do  (simpleuart_reg_dat_do),
+// 		.write_wait  (simpleuart_reg_dat_wait)
+// 	);
+// 
         Binary_To_7Segment _b7s(
             .i_Clk(clk),
             .i_LeftHex(display_data ? mem_rdata[31:16] : mem_addr[31:16]),
@@ -300,8 +333,8 @@ module system (
         assign monitor[2] = mem_ready;
         assign monitor[3] = mem_wstrb;
 	assign monitor[4] = simpleuart_reg_dat_sel;
-	assign monitor[5] = simpleuart_reg_dat_wait;
-        assign monitor[6] = uart_rx;
+	assign monitor[5] = simpleuart_write_wait;
+        assign monitor[6] = uart_busy;
         assign monitor[7] = uart_tx;
         assign monitor[15:8] = mem_la_addr[7:0];
         // assign monitor[15:12] = mem_rdata[3:0];

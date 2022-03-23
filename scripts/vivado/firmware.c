@@ -24,6 +24,7 @@ void main()
 {
 	char message[] = "$Uryyb+Jbeyq!+Vs+lbh+pna+ernq+guvf+zrffntr+gura$gur+CvpbEI32+PCH"
          		"+frrzf+gb+or+jbexvat+whfg+svar.$$++++++++++++++++GRFG+CNFFRQ!$$";
+	// reg_uart_clkdiv = 868;   // 108 216 434
 	reg_uart_clkdiv = 434;
 	for (int i = 0; message[i]; i++)
 		switch (message[i])

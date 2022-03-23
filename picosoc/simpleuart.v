@@ -34,7 +34,8 @@ module simpleuart #(parameter integer DEFAULT_DIV = 434) (
 	input wire         reg_dat_re,
 	input wire  [31:0] reg_dat_di,
 	output wire [31:0] reg_dat_do,
-	output wire   reg_dat_wait
+	output wire   read_wait,
+	output reg    write_wait
 );
 	reg [31:0] cfg_divider;
 
@@ -48,22 +49,23 @@ module simpleuart #(parameter integer DEFAULT_DIV = 434) (
 	reg [3:0] send_bitcnt;
 	reg [31:0] send_divcnt;
 	reg send_dummy;
-        reg send_wait;
 
         assign dbg_send = |send_bitcnt;
 	assign reg_div_do = cfg_divider;
 
 	assign reg_dat_do = recv_buf_valid ? recv_buf_data : ~0;
-	assign reg_dat_wait = reg_dat_we && (send_wait || send_dummy); //  | (reg_dat_re && recv_buf_valid);
+	assign read_wait  = reg_dat_re && !recv_buf_valid;
 
 	always @(posedge clk) begin
 		if (!resetn) begin
 			cfg_divider <= DEFAULT_DIV;
+	                write_wait <= 0;
 		end else begin
 			if (reg_div_we[0]) cfg_divider[ 7: 0] <= reg_div_di[ 7: 0];
 			if (reg_div_we[1]) cfg_divider[15: 8] <= reg_div_di[15: 8];
 			if (reg_div_we[2]) cfg_divider[23:16] <= reg_div_di[23:16];
 			if (reg_div_we[3]) cfg_divider[31:24] <= reg_div_di[31:24];
+	                write_wait <= reg_dat_we && (|send_bitcnt || send_dummy);
 		end
 	end
 
@@ -114,12 +116,10 @@ module simpleuart #(parameter integer DEFAULT_DIV = 434) (
             if (reg_div_we)
                 send_dummy <= 1;
             send_divcnt <= send_divcnt + 1;
-            send_wait = |send_bitcnt; //  | (reg_dat_re && recv_buf_valid);
             if (!resetn) begin
                 send_pattern <= ~0;
                 send_bitcnt <= 0;
                 send_divcnt <= 0;
-                send_wait <= 0;
                 send_dummy <= 1;
             end else begin
                 if (send_dummy && !send_bitcnt) begin
@@ -127,7 +127,7 @@ module simpleuart #(parameter integer DEFAULT_DIV = 434) (
                     send_bitcnt <= 15;
                     send_divcnt <= 0;
                     send_dummy <= 0;
-                end else if (reg_dat_we && !reg_dat_wait && !send_bitcnt) begin
+                end else if (reg_dat_we && !write_wait && !send_bitcnt) begin
                     send_pattern <= {1'b1, reg_dat_di[7:0], 1'b0};
                     send_bitcnt <= 10;
                     send_divcnt <= 0;
