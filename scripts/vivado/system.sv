@@ -42,8 +42,8 @@ parameter LOG_SPI_CLK = 2;
 
 reg [LOG_CLK_DIVIDE:0]   divide;
 always_ff @(posedge CLK100MHZ) begin divide <= divide + 1; end
-// wire            clk = CLK100MHZ;
-wire            clk = divide[0];
+wire            clk = CLK100MHZ;
+// wire            clk = divide[0];
 
 assign          led[15:0] = sw[15:0];
 wire            mem_valid;
@@ -65,8 +65,8 @@ wire [3:0]      mem_la_wstrb;
 wire            simpleuart_reg_div_sel = mem_valid && (mem_addr == 32'h 0200_0004);
 wire [31:0]     simpleuart_reg_div_do;
 
-wire            simpleuart_data_read  = mem_valid && (mem_addr == 32'h 0200_0008) && !(|mem_wstrb);
-wire            simpleuart_data_write = mem_valid && (mem_addr == 32'h 0200_0008) && |mem_wstrb;
+wire            simpleuart_data_read  = (mem_addr == 32'h 0200_0008) && !(|mem_wstrb);
+wire            simpleuart_data_write = (mem_addr == 32'h 0200_0008) && |mem_wstrb;
 wire [31:0]     simpleuart_reg_dat_do;
 
 
@@ -173,7 +173,7 @@ always_ff @(posedge clk) begin
             rgb0[0] <= (rv_state == RV_STOP);
             rgb0[1] <= (rv_state == RV_RUN);
 
-            rgb1[0] <= simpleuart_write_wait;
+            rgb1[0] <= uart_busy;
             rgb1[1] <= mem_ready;
             rgb1[2] <= breaking;
 
@@ -245,8 +245,8 @@ simpleuart _simpleuart (
     .reg_div_di  (mem_wdata),
     .reg_div_do  (simpleuart_reg_div_do),
 
-    .reg_dat_we  (simpleuart_data_write),
-    .reg_dat_re  (simpleuart_data_read),
+    .reg_dat_we  (mem_valid && simpleuart_data_write),
+    .reg_dat_re  (mem_valid && simpleuart_data_read),
     .reg_dat_di  (mem_wdata),
     .reg_dat_do  (simpleuart_reg_dat_do),
     .empty       (uart_empty),
@@ -333,7 +333,7 @@ STARTUPE2 #(
 );
 // End of STARTUPE2_inst instantiation
 
-assign monitor[0] = clk;
+assign monitor[0] = mem_valid;
 assign monitor[1] = mem_instr;
 assign monitor[2] = mem_ready;
 assign monitor[3] = dbg_send; // mem_wstrb;
