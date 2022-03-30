@@ -72,17 +72,7 @@ wire [31:0]     simpleuart_reg_dat_do;
 
 wire            uart_empty;
 wire            uart_busy;
-reg             simpleuart_write_wait;
 wire            simpleuart_read_wait;
-
-always_ff @(posedge clk) begin
-    if (!resetn)
-        simpleuart_write_wait <= 0;
-    else if (!uart_busy)
-        simpleuart_write_wait <= 0;
-    else if (!simpleuart_data_write)
-        simpleuart_write_wait <= uart_busy;
-end
 
 enum { RV_STOP, RV_RUN } j1_st;
 reg [7:0]   longstep;           // ref DEBOUNCE, size of reg is what counts
@@ -136,7 +126,7 @@ always_comb begin
         end
         simpleuart_data_write: begin
             mem_rdata = simpleuart_reg_dat_do;
-            mem_ready = !simpleuart_write_wait;
+            mem_ready = !uart_busy;
         end
         !mem_addr[14]: begin
             mem_rdata = ram_rdata;
@@ -198,7 +188,7 @@ picorv32 #(
     .ENABLE_IRQ(1),
     .ENABLE_IRQ_QREGS(ENABLE_IRQ_QREGS)
 ) _cpu (
-    .clk         (divide[2]   ),
+    .clk         (clk         ),
     .resetn      (resetn      ),
     .trap        (trap        ),
     .mem_valid   (mem_valid   ),
@@ -338,7 +328,7 @@ assign monitor[1] = mem_instr;
 assign monitor[2] = mem_ready;
 assign monitor[3] = dbg_send; // mem_wstrb;
 assign monitor[4] = simpleuart_data_write;
-assign monitor[5] = simpleuart_write_wait;
+assign monitor[5] = simpleuart_read_wait;
 assign monitor[6] = uart_busy;
 assign monitor[7] = uart_tx;
 assign monitor[15:8] = mem_la_addr[7:0];
